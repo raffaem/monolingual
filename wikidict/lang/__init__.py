@@ -24,6 +24,9 @@ def _populate(attr: str) -> dict[str, Any]:
     }
 
 
+# Name of the "Module" special page in the current locale
+module_trans = _populate("module_trans")
+
 # Float number separator
 float_separator: dict[str, str] = _populate("float_separator")
 

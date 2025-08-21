@@ -7,6 +7,9 @@ from ..user_functions import subscript, superscript
 
 log = logging.getLogger(__name__)
 
+# Name of the "Module" special page in the current locale
+module_trans = "Module"
+
 # Float number separator
 float_separator = ""
 

@@ -67,7 +67,7 @@ def test_parse_restricted_word(tmp_path: Path) -> None:
 """
     )
 
-    assert "cunnilingus" in parse.process(file, "fr")
+    assert "cunnilingus" in parse.process(file, "fr")[1]
 
 
 def test_parse_redirected_word(tmp_path: Path) -> None:
@@ -85,7 +85,7 @@ def test_parse_redirected_word(tmp_path: Path) -> None:
 """
     )
 
-    assert not parse.process(file, "fr")
+    assert not parse.process(file, "fr")[1]
 
 
 def test_parse_word_without_wikicode(tmp_path: Path) -> None:
@@ -115,7 +115,7 @@ def test_parse_word_without_wikicode(tmp_path: Path) -> None:
 """
     )
 
-    assert not parse.process(file, "fr")
+    assert not parse.process(file, "fr")[1]
 
 
 def test_parse_word_with_colons(tmp_path: Path) -> None:
@@ -153,7 +153,7 @@ def test_parse_word_with_colons(tmp_path: Path) -> None:
 """
     )
 
-    assert not parse.process(file, "fr")
+    assert not parse.process(file, "fr")[1]
 
 
 def test_parse_word_with_templates_lowercased(tmp_path: Path) -> None:
@@ -196,7 +196,7 @@ def test_parse_word_with_templates_lowercased(tmp_path: Path) -> None:
 """
     )
 
-    assert "restaurang" in parse.process(file, "sv")
+    assert "restaurang" in parse.process(file, "sv")[1]
 
 
 @pytest.mark.parametrize(
@@ -221,18 +221,23 @@ def test_sublang(locale: str, lang_src: str, lang_dst: str, tmp_path: Path) -> N
         output_file = parse.get_output_file(source_dir, lang_src, lang_dst, snapshot)
         assert output_file == source_dir.parent / lang_dst / lang_src / f"data_wikicode-{snapshot}.json"
 
+        output_file_modules = parse.get_output_file_modules(source_dir, lang_src, lang_dst, snapshot)
+        assert output_file_modules == source_dir.parent / lang_dst / lang_src / f"modules-{snapshot}.json"
+
         with (
             patch.object(parse, "get_source_dir") as mocked_gsd,
             patch.object(parse, "get_latest_xml_file") as mocked_glxf,
             patch.object(parse, "process") as mocked_p,
             patch.object(parse, "save") as mocked_s,
+            patch.object(parse, "save_modules") as mocked_sm,
         ):
             mocked_glxf.return_value = pages
             mocked_gsd.return_value = source_dir
-            mocked_p.return_value = words
+            mocked_p.return_value = {}, words
 
             parse.main(locale)
             mocked_gsd.assert_called_once_with(lang_src)
             mocked_glxf.assert_called_once_with(source_dir)
             mocked_p.assert_called_once_with(pages, locale)
             mocked_s.assert_called_once_with(output_file, words)
+            mocked_sm.assert_called_once_with(output_file_modules, {})

@@ -4,6 +4,8 @@ import re
 
 from .langs import langs
 
+module_trans = "Modul"
+
 # Float number separator
 float_separator = ","
 
