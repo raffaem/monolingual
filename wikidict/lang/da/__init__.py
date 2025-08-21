@@ -5,6 +5,7 @@ import re
 from .langs import langs
 
 module_trans = "Modul"
+template_trans = "Skabelon"
 
 # Float number separator
 float_separator = ","

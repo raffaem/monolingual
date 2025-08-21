@@ -12,6 +12,10 @@ from pathlib import Path
 from time import monotonic
 from typing import TYPE_CHECKING
 
+import sys
+sys.path.insert(0, "../wikitextprocessor/src")
+from wikitextprocessor import Wtp
+
 from . import lang, utils
 
 if TYPE_CHECKING:
@@ -21,6 +25,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 RE_TEXT = re.compile(r"<text[^>]*>(.*)</text>", flags=re.DOTALL).finditer
+RE_NS = re.compile(r"<ns>(\d+)</ns>").finditer
 RE_TITLE_WORD = re.compile(r"<title>([^:]*)</title>").finditer
 
 # To list all words not taken into account with current head sections:
@@ -50,16 +55,24 @@ def xml_parse_element(
     element: str,
     head_sections_matcher: Callable[[str], Iterator[str]],
     module_matcher: Callable[[str], Iterator[re.Match[str]]],
-) -> tuple[str, str, str]:
+    template_matcher: Callable[[str], Iterator[re.Match[str]]],
+    wtp_ctx: Wtp,
+) -> tuple[str, str]:
     """Parse the XML `element` to retrieve the word and its definitions."""
     if title := next(module_matcher(element), None):
         for text in RE_TEXT(element, pos=element.find("<text")):
-            return "module", title[1], text[1]
+            # ns = next(RE_NS(element))
+            wtp_ctx.add_page(title[1], 0, body=text[1], model="Scribunto")
+
+    elif title := next(template_matcher(element), None):
+        for text in RE_TEXT(element, pos=element.find("<text")):
+            # ns = next(RE_NS(element))
+            wtp_ctx.add_page(title[1], 0, body=text[1], model="wikitext")
 
     elif title := next(RE_TITLE_WORD(element), None):
         for text in RE_TEXT(element, pos=element.find("<text", title.endpos)):
             if next(head_sections_matcher(wikicode := text[1]), None):
-                return "word", title[1], wikicode
+                return title[1], wikicode
 
         if DEBUG_PARSE:
             try:
@@ -68,12 +81,11 @@ def xml_parse_element(
                 print(f"{title[1]!r}: NO TEXT", flush=True)
 
     # No Wikicode; unfinished page; no interesting head section; a foreign word, etc. Who knows?
-    return "", "", ""
+    return "", ""
 
 
-def process(file: Path, locale: str) -> tuple[dict[str, str], ...]:
+def process(file: Path, locale: str, db_path: Path) -> dict[str, str]:
     """Process the big XML file and retain only information we are interested in."""
-    modules: dict[str, str] = {}
     words: dict[str, str] = {}
     lang_src, lang_dst = utils.guess_locales(locale, use_log=False)
 
@@ -90,19 +102,17 @@ def process(file: Path, locale: str) -> tuple[dict[str, str], ...]:
         ).finditer  # type: ignore[assignment]
 
     module_matcher = re.compile(rf"<title>({lang.module_trans[lang_dst]}:[^<]+)</title>").finditer
+    template_matcher = re.compile(rf"<title>({lang.template_trans[lang_dst]}:[^<]+)</title>").finditer
+    wtp_ctx = Wtp(db_path, lang_code=lang_dst)
 
     for element in xml_iter_parse(file):
-        kind, title, code = xml_parse_element(element, head_sections_matcher, module_matcher)
+        title, code = xml_parse_element(element, head_sections_matcher, module_matcher, template_matcher, wtp_ctx)
+        if not title or not code or (lang_dst == "en" and title[:19] == "Unsupported titles/"):
+            continue
+        words[unescape(title)] = unescape(code)
 
-        match kind:
-            case "module":
-                modules[unescape(title)] = unescape(code)
-            case "word":
-                if not title or not code or (lang_dst == "en" and title[:19] == "Unsupported titles/"):
-                    continue
-                words[unescape(title)] = unescape(code)
-
-    return modules, words
+    wtp_ctx.close_db_conn()
+    return words
 
 
 def save(output: Path, words: dict[str, str]) -> None:
@@ -140,8 +150,12 @@ def get_output_file(source_dir: Path, lang_src: str, lang_dst: str, snapshot: st
     return source_dir.parent / lang_dst / lang_src / f"data_wikicode-{snapshot}.json"
 
 
+# def get_output_file_modules(source_dir: Path, lang_src: str, lang_dst: str, snapshot: str) -> Path:
+#     return source_dir.parent / lang_dst / lang_src / f"modules-{snapshot}.json"
+
+
 def get_output_file_modules(source_dir: Path, lang_src: str, lang_dst: str, snapshot: str) -> Path:
-    return source_dir.parent / lang_dst / lang_src / f"modules-{snapshot}.json"
+    return source_dir.parent / lang_dst / lang_src / f"modules-{snapshot}.sqlite"
 
 
 def main(locale: str) -> int:
@@ -161,8 +175,9 @@ def main(locale: str) -> int:
     if output.is_file():
         log.info("Already parsed into %s", output)
     else:
-        modules, words = process(input_file, locale)
-        save_modules(get_output_file_modules(source_dir, lang_src, lang_dst, snapshot), modules)
+        db = get_output_file_modules(source_dir, lang_src, lang_dst, snapshot)
+        words = process(input_file, locale, db)
+        # save_modules(get_output_file_modules(source_dir, lang_src, lang_dst, snapshot), modules)
         save(output, words)
         if not words:
             ret = 1

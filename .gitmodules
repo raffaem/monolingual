@@ -1,0 +1,3 @@
+[submodule "wikitextprocessor"]
+	path = wikitextprocessor
+	url = https://github.com/tatuylonen/wikitextprocessor.git

@@ -10,6 +10,9 @@ log = logging.getLogger(__name__)
 # Name of the "Module" special page in the current locale
 module_trans = "Module"
 
+# Name of the "Template" special page in the current locale
+template_trans = "Template"
+
 # Float number separator
 float_separator = ""
 
